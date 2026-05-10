@@ -11,19 +11,17 @@ function App() {
   const [page, setPage] = useState<Page>('home');
   const bt = useBluetooth();
 
-  const handleNavigate = (p: string) => {
-    setPage(p as Page);
-  };
+  const go = (p: Page) => setPage(p);
 
   switch (page) {
     case 'register':
-      return <Register onBack={() => setPage('home')} bt={bt} />;
+      return <Register onBack={() => go('home')} bt={bt} />;
     case 'faces':
-      return <FaceList onBack={() => setPage('home')} bt={bt} />;
+      return <FaceList onBack={() => go('home')} bt={bt} />;
     case 'log':
-      return <ActivityLog onBack={() => setPage('home')} bt={bt} />;
+      return <ActivityLog onBack={() => go('home')} bt={bt} />;
     default:
-      return <Home onNavigate={handleNavigate} />;
+      return <Home onNavigate={go} bt={bt} />;
   }
 }
 
