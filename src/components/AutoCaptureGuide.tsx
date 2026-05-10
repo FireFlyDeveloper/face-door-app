@@ -202,8 +202,21 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
 
     async function loadModel() {
       try {
-        await tf.setBackend('webgl');
-        await tf.ready();
+        // Try WebGL first, fall back to CPU
+        const backends = ['webgl', 'cpu'];
+        let backendOk = false;
+        for (const backend of backends) {
+          try {
+            await tf.setBackend(backend);
+            await tf.ready();
+            console.log('[TF] Backend initialized:', backend, tf.getBackend());
+            backendOk = true;
+            break;
+          } catch (e) {
+            console.warn('[TF] Backend failed:', backend, e);
+          }
+        }
+        if (!backendOk) throw new Error('No TF.js backend available');
 
         const faceLandmarks = await import('@tensorflow-models/face-landmarks-detection');
         const model = faceLandmarks.SupportedModels.MediaPipeFaceMesh;
@@ -213,7 +226,8 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
         });
         if (cancelled) return;
         modelRef.current = detector;
-        setLoaded(true); // ✅ video element mounts now
+        console.log('[TF] Face mesh model loaded successfully');
+        setLoaded(true);
       } catch (err: any) {
         if (!cancelled) {
           setError(err?.message || 'Failed to load face detection model');
@@ -355,6 +369,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
       }
     } catch {
       // Detection error, skip this frame
+      console.warn('[FaceDetect] estimateFaces failed, skipping frame');
     }
 
     frameRef.current = requestAnimationFrame(processFrame);
