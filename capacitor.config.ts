@@ -6,6 +6,12 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
+    allowNavigation: [
+      'tfhub.dev',
+      'www.kaggle.com',
+      'kaggle.com',
+      'storage.googleapis.com',
+    ],
   },
   android: {
     allowMixedContent: true,
