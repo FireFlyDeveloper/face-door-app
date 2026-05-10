@@ -1,0 +1,27 @@
+/** Light theme for Face Door App */
+
+export const theme = {
+  bg: '#f5f7fa',
+  card: '#ffffff',
+  cardAlt: '#f0f2f5',
+  text: '#1a1a2e',
+  textSecondary: '#666',
+  textMuted: '#999',
+  accent: '#00bfa5',
+  accentLight: '#00bfa515',
+  accentText: '#00897b',
+  danger: '#e53935',
+  dangerLight: '#e5393515',
+  success: '#00c853',
+  successLight: '#00c85315',
+  warning: '#ff8f00',
+  warningLight: '#ff8f0015',
+  border: '#e0e0e0',
+  divider: '#eeeeee',
+  headerBg: '#ffffff',
+  headerText: '#1a1a2e',
+  inputBg: '#f5f7fa',
+  inputBorder: '#ddd',
+  shadow: '0 2px 8px rgba(0,0,0,0.08)',
+  shadowCard: '0 1px 4px rgba(0,0,0,0.06)',
+};

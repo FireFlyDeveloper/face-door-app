@@ -155,22 +155,22 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cancelBtn: {
     position: 'absolute', bottom: 12, right: 12,
-    background: 'rgba(255,23,68,0.85)', color: '#fff',
+    background: 'rgba(229,57,53,0.9)', color: '#fff',
     border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13,
     cursor: 'pointer', pointerEvents: 'auto', zIndex: 10,
   },
   thumbnails: {
-    display: 'flex', gap: 4, padding: 8, overflowX: 'auto', background: '#0f0f1a',
+    display: 'flex', gap: 4, padding: 8, overflowX: 'auto', background: '#f5f7fa',
   },
   thumb: { width: 48, height: 48, borderRadius: 6, objectFit: 'cover', border: '2px solid transparent' },
-  thumbDone: { width: 48, height: 48, borderRadius: 6, objectFit: 'cover', border: '2px solid #64ffda' },
+  thumbDone: { width: 48, height: 48, borderRadius: 6, objectFit: 'cover', border: '2px solid #00bfa5' },
   thumbEmpty: {
-    width: 48, height: 48, borderRadius: 6, background: '#222',
-    border: '2px solid #333', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', color: '#555', fontSize: 10,
+    width: 48, height: 48, borderRadius: 6, background: '#e0e0e0',
+    border: '2px solid #ccc', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', color: '#999', fontSize: 10,
   },
   loading: {
-    textAlign: 'center', padding: 40, color: '#64ffda', fontSize: 14,
+    textAlign: 'center', padding: 40, color: '#00bfa5', fontSize: 14,
   },
 };
 
