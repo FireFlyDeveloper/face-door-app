@@ -183,6 +183,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [faceDetected, setFaceDetected] = useState(false);
+  const [debugText, setDebugText] = useState('Starting...');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -202,6 +203,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
 
     async function loadModel() {
       try {
+        setDebugText('Initializing TF.js backend...');
         // Try WebGL first, fall back to CPU
         const backends = ['webgl', 'cpu'];
         let backendOk = false;
@@ -209,7 +211,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
           try {
             await tf.setBackend(backend);
             await tf.ready();
-            console.log('[TF] Backend initialized:', backend, tf.getBackend());
+            setDebugText(`Backend: ${backend} (${tf.getBackend()})`);
             backendOk = true;
             break;
           } catch (e) {
@@ -218,6 +220,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
         }
         if (!backendOk) throw new Error('No TF.js backend available');
 
+        setDebugText('Downloading face model...');
         const faceLandmarks = await import('@tensorflow-models/face-landmarks-detection');
         const model = faceLandmarks.SupportedModels.MediaPipeFaceMesh;
         const detector = await faceLandmarks.createDetector(model, {
@@ -226,7 +229,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
         });
         if (cancelled) return;
         modelRef.current = detector;
-        console.log('[TF] Face mesh model loaded successfully');
+        setDebugText('Model loaded! Starting camera...');
         setLoaded(true);
       } catch (err: any) {
         if (!cancelled) {
@@ -244,9 +247,9 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
   useEffect(() => {
     if (!loaded) return;
     let cancelled = false;
-
     async function startCamera() {
       try {
+        setDebugText('Requesting camera...');
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user' },
           audio: false,
@@ -256,18 +259,27 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
           return;
         }
         streamRef.current = stream;
-        console.log('[Camera] stream obtained, tracks:', stream.getTracks().length);
+        setDebugText(`Camera OK (${stream.getTracks().length} tracks), attaching to video...`);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           try {
             await videoRef.current.play();
-            console.log('[Camera] video.play() succeeded');
+            setDebugText('Video playing! Running detection...');
           } catch (playErr) {
+            setDebugText('Video play() failed');
             console.warn('[Camera] video.play() failed:', playErr);
           }
         } else {
+          setDebugText('ERROR: video element not mounted');
           console.error('[Camera] videoRef.current is null');
         }
+        
+        // Check if model actually has estimateFaces
+        if (typeof modelRef.current?.estimateFaces !== 'function') {
+          setDebugText('ERROR: model has no estimateFaces method');
+          return;
+        }
+        setDebugText('Detection running...');
         processFrame();
       } catch (err: any) {
         if (!cancelled) {
@@ -389,7 +401,14 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
   }
 
   if (!loaded) {
-    return <div style={styles.loading}>Loading face detection model...</div>;
+    return (
+      <div style={styles.loading}>
+        <div>Loading face detection model...</div>
+        <div style={{ fontSize: 11, color: '#00897b', marginTop: 8, fontFamily: 'monospace' }}>
+          {debugText}
+        </div>
+      </div>
+    );
   }
 
   if (isComplete) return null;
@@ -401,6 +420,15 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
 
   return (
     <div>
+      {/* Debug overlay */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999,
+        background: 'rgba(38,50,56,0.9)', color: '#b2dfdb',
+        fontSize: 11, fontFamily: 'monospace', padding: '4px 8px',
+        textAlign: 'center',
+      }}>
+        {debugText}
+      </div>
       <div style={styles.container}>
         <video ref={videoRef} autoPlay playsInline muted style={styles.video} />
 
