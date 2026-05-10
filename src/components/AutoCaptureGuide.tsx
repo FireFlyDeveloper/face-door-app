@@ -186,6 +186,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
   const [debugText, setDebugText] = useState('Starting...');
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const modelRef = useRef<any>(null);
   const frameRef = useRef<number>(0);
@@ -203,22 +204,10 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
 
     async function loadModel() {
       try {
-        setDebugText('Initializing TF.js backend...');
-        // Try WebGL first, fall back to CPU
-        const backends = ['webgl', 'cpu'];
-        let backendOk = false;
-        for (const backend of backends) {
-          try {
-            await tf.setBackend(backend);
-            await tf.ready();
-            setDebugText(`Backend: ${backend} (${tf.getBackend()})`);
-            backendOk = true;
-            break;
-          } catch (e) {
-            console.warn('[TF] Backend failed:', backend, e);
-          }
-        }
-        if (!backendOk) throw new Error('No TF.js backend available');
+        // Force CPU backend (WebGL on mobile WebViews has issues with this model)
+        await tf.setBackend('cpu');
+        await tf.ready();
+        setDebugText(`Backend: cpu`);
 
         setDebugText('Downloading face model...');
         const faceLandmarks = await import('@tensorflow-models/face-landmarks-detection');
@@ -310,7 +299,16 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
     }
 
     try {
-      const faces = await modelRef.current.estimateFaces(video);
+      // Draw video frame to canvas first (fixes WebView format issues)
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      canvas.width = video.videoWidth || 480;
+      canvas.height = video.videoHeight || 640;
+      ctx.drawImage(video, 0, 0);
+      
+      const faces = await modelRef.current.estimateFaces(canvas);
       const hasFace = faces && faces.length > 0;
       setFaceDetected(hasFace);
 
@@ -431,6 +429,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
       </div>
       <div style={styles.container}>
         <video ref={videoRef} autoPlay playsInline muted style={styles.video} />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
 
         {/* Guide overlay */}
         <div style={styles.overlay}>
