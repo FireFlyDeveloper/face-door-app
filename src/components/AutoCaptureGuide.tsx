@@ -110,7 +110,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   video: {
     width: '100%', height: '100%', display: 'block', objectFit: 'cover',
-    transform: 'scaleX(-1)',
   },
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -235,7 +234,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 640 } },
+          video: { facingMode: 'user' },
           audio: false,
         });
         if (cancelled) {
@@ -243,8 +242,17 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
           return;
         }
         streamRef.current = stream;
+        console.log('[Camera] stream obtained, tracks:', stream.getTracks().length);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+            console.log('[Camera] video.play() succeeded');
+          } catch (playErr) {
+            console.warn('[Camera] video.play() failed:', playErr);
+          }
+        } else {
+          console.error('[Camera] videoRef.current is null');
         }
         processFrame();
       } catch (err: any) {
