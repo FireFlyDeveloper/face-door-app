@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
-import CaptureGuide, { type CapturedImage } from '../components/CaptureGuide';
+import AutoCaptureGuide, { type CapturedImage } from '../components/AutoCaptureGuide';
 import { useBluetooth, RSSI_THRESHOLD } from '../hooks/useBluetooth';
 import { buildRegister, type BTResponse } from '../services/protocol';
 import { processImages } from '../services/imageProcessor';
@@ -209,20 +209,20 @@ export default function Register({ onBack, bt }: Props) {
               onClick={handleRegister}
               disabled={!faceId.trim()}
             >
-              Start Capture
+              🔄 Start Auto-Capture
             </button>
           </div>
         )}
 
-        {/* Step 2: Capture 10 images */}
+      {/* Step 2: Capture 10 images (auto with face tracking) */}
         {step === 'capture' && (
           <div>
             <div style={{ ...styles.card, padding: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#64ffda', marginBottom: 8 }}>
-                📷 Capture 10 Face Angles — {faceId}
+                📷 Look at the camera — auto-capturing 10 angles for {faceId}
               </div>
             </div>
-            <CaptureGuide onComplete={handleCaptureComplete} />
+            <AutoCaptureGuide onComplete={handleCaptureComplete} onCancel={handleReset} />
           </div>
         )}
 
