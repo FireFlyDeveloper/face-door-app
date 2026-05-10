@@ -197,26 +197,43 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
   const pos = CAPTURE_POSITIONS[currentPos];
   const isComplete = currentPos >= CAPTURE_POSITIONS.length;
 
-  // ── Initialize model + camera ────────────────────────────────────────
+  // ── Phase 1: Load model ───────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
-    async function init() {
+    async function loadModel() {
       try {
-        // Load TF.js backend
         await tf.setBackend('webgl');
         await tf.ready();
 
-        // Load face landmarks detector
         const faceLandmarks = await import('@tensorflow-models/face-landmarks-detection');
         const model = faceLandmarks.SupportedModels.MediaPipeFaceMesh;
         const detector = await faceLandmarks.createDetector(model, {
           runtime: 'tfjs',
           refineLandmarks: true,
         });
+        if (cancelled) return;
         modelRef.current = detector;
+        setLoaded(true); // ✅ video element mounts now
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || 'Failed to load face detection model');
+        }
+      }
+    }
 
-        // Start camera
+    loadModel();
+
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Phase 2: Start camera (video element is now mounted) ──────────────
+  useEffect(() => {
+    if (!loaded) return;
+    let cancelled = false;
+
+    async function startCamera() {
+      try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 640 } },
           audio: false,
@@ -229,17 +246,15 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-
-        setLoaded(true);
-        processFrame(); // start detection loop
+        processFrame();
       } catch (err: any) {
         if (!cancelled) {
-          setError(err?.message || 'Failed to initialize camera or model');
+          setError(err?.message || 'Failed to start camera');
         }
       }
     }
 
-    init();
+    startCamera();
 
     return () => {
       cancelled = true;
@@ -249,7 +264,7 @@ export default function AutoCaptureGuide({ onComplete, onCancel }: Props) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, []);
+  }, [loaded]);
 
   // ── Frame processing loop ────────────────────────────────────────────
   const processFrame = useCallback(async () => {
