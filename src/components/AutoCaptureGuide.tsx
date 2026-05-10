@@ -105,11 +105,12 @@ interface Props {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    position: 'relative', width: '100%', maxWidth: 480, margin: '0 auto',
+    position: 'relative', width: '100%', maxWidth: 480, height: 360, margin: '0 auto',
     background: '#000', borderRadius: 12, overflow: 'hidden',
   },
   video: {
-    width: '100%', display: 'block', transform: 'scaleX(-1)', // mirror
+    width: '100%', height: '100%', display: 'block', objectFit: 'cover',
+    transform: 'scaleX(-1)',
   },
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
