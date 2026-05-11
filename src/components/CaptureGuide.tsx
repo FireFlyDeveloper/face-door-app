@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 
 // 10 capture positions with guide descriptions
 const CAPTURE_POSITIONS = [
@@ -38,6 +38,7 @@ const styles: Record<string, React.CSSProperties> = {
   video: {
     width: '100%',
     display: 'block',
+    transform: 'scaleX(-1)',
   },
   overlay: {
     position: 'absolute',
@@ -133,68 +134,128 @@ const styles: Record<string, React.CSSProperties> = {
     objectFit: 'cover',
     border: '2px solid #64ffda',
   },
-  hiddenInput: {
-    display: 'none',
+  emptyThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    background: '#222',
+    border: '2px solid #333',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#555',
+    fontSize: 10,
+    flexShrink: 0,
   },
 };
 
 export default function CaptureGuide({ onComplete }: Props) {
   const [currentPos, setCurrentPos] = useState(0);
   const [captured, setCaptured] = useState<CapturedImage[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const position = CAPTURE_POSITIONS[currentPos];
   const isComplete = currentPos >= CAPTURE_POSITIONS.length;
 
-  const handleCaptureClick = useCallback(() => {
-    inputRef.current?.click();
+  // ── Start camera on mount ──
+  useEffect(() => {
+    let cancelled = false;
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        });
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          setCameraReady(true);
+        }
+      } catch (err: any) {
+        if (!cancelled) setCameraError(err?.message || 'Camera access denied');
+      }
+    }
+    startCamera();
+    return () => {
+      cancelled = true;
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
-  const handleFileCapture = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCaptureClick = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !cameraReady) return;
 
-    const newCapture: CapturedImage = {
-      position: position.id,
-      label: position.label,
-      file,
-      previewUrl: URL.createObjectURL(file),
-    };
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    const updated = [...captured, newCapture];
-    setCaptured(updated);
-    setCurrentPos((p) => p + 1);
+    // Flip horizontally to match mirrored preview
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+    ctx.restore();
 
-    // Reset input so the same file can be selected again
-    if (inputRef.current) inputRef.current.value = '';
-  }, [captured, position]);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `face_${position.id}.jpg`, { type: 'image/jpeg' });
+      const previewUrl = URL.createObjectURL(blob);
+
+      const newCapture: CapturedImage = {
+        position: position.id,
+        label: position.label,
+        file,
+        previewUrl,
+      };
+
+      const updated = [...captured, newCapture];
+      setCaptured(updated);
+      setCurrentPos((p) => p + 1);
+
+      // All 10 done — notify parent
+      if (updated.length >= CAPTURE_POSITIONS.length) {
+        onComplete(updated);
+      }
+    }, 'image/jpeg', 0.85);
+  }, [captured, position, cameraReady, onComplete]);
 
   const handleRetake = useCallback((posIndex: number) => {
     setCaptured((prev) => prev.filter((c) => c.position !== posIndex));
     setCurrentPos(posIndex);
   }, []);
 
-  // All 10 captured — notify parent
-  if (isComplete && captured.length >= 10) {
-    onComplete(captured);
-    return null;
+  // ── Camera error screen ──
+  if (cameraError) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center' }}>
+        <div style={{ fontSize: 16, color: '#ff1744', marginBottom: 12 }}>⚠️ {cameraError}</div>
+        <div style={{ fontSize: 13, color: '#78909c' }}>Allow camera access and try again.</div>
+      </div>
+    );
   }
 
   return (
     <div>
       <div style={styles.container}>
-        {/* Hidden camera input */}
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          style={styles.hiddenInput}
-          onChange={handleFileCapture}
+        {/* Live camera preview */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={styles.video}
         />
 
-        {/* Dark placeholder (camera viewfinder substitute) */}
-        <div style={{ width: '100%', aspectRatio: '3/4', background: '#111' }} />
+        {/* Hidden canvas for frame capture */}
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
 
         {/* Guide overlay */}
         <div style={styles.overlay}>
@@ -208,10 +269,18 @@ export default function CaptureGuide({ onComplete }: Props) {
         <div style={styles.positionDesc}>{position.desc}</div>
 
         {/* Progress */}
-        <div style={styles.progress}>{captured.length}/10 captured</div>
+        <div style={styles.progress}>{captured.length}/{CAPTURE_POSITIONS.length} captured</div>
 
         {/* Capture button */}
-        <button style={styles.captureBtn} onClick={handleCaptureClick} aria-label="Capture" />
+        <button
+          style={{
+            ...styles.captureBtn,
+            opacity: cameraReady ? 1 : 0.4,
+          }}
+          onClick={handleCaptureClick}
+          disabled={!cameraReady}
+          aria-label="Capture"
+        />
 
         {/* Retake last */}
         {captured.length > 0 && (
@@ -235,21 +304,10 @@ export default function CaptureGuide({ onComplete }: Props) {
                 src={cap.previewUrl}
                 alt={pos.label}
                 style={pos.id === currentPos ? styles.thumbnailActive : styles.thumbnail}
+                onClick={() => handleRetake(pos.id)}
               />
             ) : (
-              <div
-                key={pos.id}
-                style={{
-                  ...styles.thumbnail,
-                  background: '#222',
-                  border: '2px solid #333',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#555',
-                  fontSize: 10,
-                }}
-              >
+              <div key={pos.id} style={styles.emptyThumb}>
                 {pos.label.slice(0, 2)}
               </div>
             );
