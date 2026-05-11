@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
 import { useBluetooth } from '../hooks/useBluetooth';
 import { buildGetLog, type BTResponse } from '../services/protocol';
@@ -11,7 +11,7 @@ interface Props { onBack: () => void; bt: ReturnType<typeof useBluetooth> }
 
 export default function ActivityLog({ onBack, bt }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const loadLog = useCallback(async () => {
@@ -25,57 +25,93 @@ export default function ActivityLog({ onBack, bt }: Props) {
     } finally { setLoading(false); }
   }, [bt]);
 
+  useEffect(() => { loadLog(); }, [loadLog]);
+
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: theme.bg, color: theme.text }}>
       <TopBar title="Activity Log" onBack={onBack} />
       <div style={{ padding: 16 }}>
+
         <div style={{
-          background: theme.card, borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: theme.shadowCard,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          marginBottom: 16,
         }}>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.accentText }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: theme.text }}>
             Door Access Log
+            {entries.length > 0 && (
+              <span style={{ fontSize: 13, color: theme.textMuted, fontWeight: 400, marginLeft: 6 }}>
+                ({entries.length})
+              </span>
+            )}
           </div>
-          <button style={{
-            width: '100%', padding: 12, borderRadius: 8, border: 'none',
-            background: theme.accent, color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer',
-          }} onClick={loadLog} disabled={loading}>
-            {loading ? 'Loading...' : '🔄 Pull Latest Log'}
+          <button onClick={loadLog} disabled={loading}
+            style={{
+              background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textMuted,
+              borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer',
+            }}>
+            {loading ? '...' : '↻ Refresh'}
           </button>
-          {error && <div style={{ color: theme.danger, fontSize: 13, marginTop: 8 }}>{error}</div>}
         </div>
 
-        {entries.length === 0 && !loading ? (
+        {error && (
+          <div style={{
+            background: '#ffebee', color: theme.danger, fontSize: 13, padding: '10px 14px',
+            borderRadius: 8, marginBottom: 12,
+          }}>{error}</div>
+        )}
+
+        {loading && entries.length === 0 && (
           <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted, fontSize: 14 }}>
-            No activity entries yet.<br />Press "Pull Latest Log" to fetch from Pi.
+            Loading activity log...
           </div>
-        ) : (
-          entries.map((entry, i) => {
+        )}
+
+        {!loading && entries.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted, fontSize: 14 }}>
+            No activity entries yet.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {entries.map((entry, i) => {
             const isGranted = entry.result === 'GRANTED';
             const isRejected = entry.result === 'REJECTED';
-            const border = isGranted ? `3px solid ${theme.success}` :
-              isRejected ? `3px solid ${theme.danger}` : `3px solid ${theme.warning}`;
+            const isUnknown = entry.face_id === 'unknown';
             return (
               <div key={i} style={{
-                background: theme.cardAlt, borderRadius: 8, padding: 12, marginBottom: 8,
-                borderLeft: border, boxShadow: theme.shadowCard,
+                background: theme.card, borderRadius: 12, padding: 14,
+                border: `1px solid ${theme.border}`,
+                borderLeft: `4px solid ${
+                  isGranted ? theme.success : isRejected ? theme.danger : theme.warning
+                }`,
+                boxShadow: theme.shadowCard,
               }}>
-                <div style={{ fontSize: 11, color: theme.textMuted, fontFamily: 'monospace' }}>
-                  {new Date(entry.timestamp).toLocaleString()}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>
+                      {isUnknown ? 'Unknown Person' : entry.face_id}
+                    </div>
+                    {entry.details && (
+                      <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                        {entry.details}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+                    background: isGranted ? '#e8f5e9' : isRejected ? '#ffebee' : '#fff8e1',
+                    color: isGranted ? theme.success : isRejected ? theme.danger : theme.warning,
+                  }}>
+                    {isGranted ? 'Granted' : isRejected ? 'Denied' : entry.result}
+                  </div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2 }}>
-                  {entry.face_id === 'unknown' ? '⚠️ Unknown' : entry.face_id}
+                <div style={{ fontSize: 11, color: theme.textMuted, fontFamily: 'monospace', marginTop: 6 }}>
+                  {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}
                 </div>
-                <div style={{
-                  fontSize: 12, marginTop: 2, fontWeight: 600,
-                  color: isGranted ? theme.success : isRejected ? theme.danger : theme.warning,
-                }}>{entry.result}</div>
-                {entry.details && (
-                  <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>{entry.details}</div>
-                )}
               </div>
             );
-          })
-        )}
+          })}
+        </div>
       </div>
     </div>
   );

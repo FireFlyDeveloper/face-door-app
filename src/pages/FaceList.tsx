@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
 import { useBluetooth } from '../hooks/useBluetooth';
 import { buildList, buildDelete, type BTResponse } from '../services/protocol';
@@ -9,18 +9,9 @@ interface FaceItem {
 }
 interface Props { onBack: () => void; bt: ReturnType<typeof useBluetooth> }
 
-const card: React.CSSProperties = {
-  background: theme.card, borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: theme.shadowCard,
-};
-const heading: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.accentText };
-const btnBase: React.CSSProperties = {
-  width: '100%', padding: 12, borderRadius: 8, border: 'none',
-  fontWeight: 600, fontSize: 15, cursor: 'pointer',
-};
-
 export default function FaceList({ onBack, bt }: Props) {
   const [faces, setFaces] = useState<FaceItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -36,6 +27,8 @@ export default function FaceList({ onBack, bt }: Props) {
       setError(err instanceof Error ? err.message : 'Connection error');
     } finally { setLoading(false); }
   }, [bt]);
+
+  useEffect(() => { loadFaces(); }, [loadFaces]);
 
   const handleDelete = useCallback(async (faceId: string) => {
     setDeleting(faceId); setError(''); setSuccess('');
@@ -54,51 +47,83 @@ export default function FaceList({ onBack, bt }: Props) {
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: theme.bg, color: theme.text }}>
       <TopBar title="Manage Faces" onBack={onBack} />
       <div style={{ padding: 16 }}>
-        {error && <div style={{ color: theme.danger, fontSize: 13, marginBottom: 8 }}>{error}</div>}
-        {success && <div style={{ color: theme.success, fontSize: 13, marginBottom: 8 }}>{success}</div>}
 
-        <div style={card}>
-          <div style={heading}>Registered Faces (max 5)</div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button style={{ ...btnBase, background: theme.accent, color: '#fff', flex: 1 }}
-              onClick={loadFaces} disabled={loading}>
-              {loading ? 'Loading...' : '🔄 Refresh'}
+        {error && (
+          <div style={{
+            background: '#ffebee', color: theme.danger, fontSize: 13, padding: '10px 14px',
+            borderRadius: 8, marginBottom: 12,
+          }}>{error}</div>
+        )}
+        {success && (
+          <div style={{
+            background: '#e8f5e9', color: theme.success, fontSize: 13, padding: '10px 14px',
+            borderRadius: 8, marginBottom: 12,
+          }}>{success}</div>
+        )}
+
+        <div style={{
+          background: theme.card, borderRadius: 14, padding: 20,
+          boxShadow: theme.shadowCard, border: `1px solid ${theme.border}`,
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: theme.text }}>
+              Registered Faces {faces.length > 0 && <span style={{ fontSize: 13, color: theme.textMuted }}>({faces.length}/5)</span>}
+            </div>
+            <button onClick={loadFaces} disabled={loading}
+              style={{
+                background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textMuted,
+                borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer',
+              }}>
+              {loading ? '...' : '↻'}
             </button>
           </div>
-          {faces.length === 0 && !loading && (
+
+          {loading && faces.length === 0 && (
             <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted, fontSize: 14 }}>
-              No faces registered yet.<br />Use "Register Face" to add faces.
+              Loading faces...
             </div>
           )}
+
+          {!loading && faces.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted, fontSize: 14 }}>
+              No faces registered yet.
+            </div>
+          )}
+
           {faces.map((face) => (
             <div key={face.face_id} style={{
-              background: theme.cardAlt, borderRadius: 8, padding: 14, marginBottom: 10,
+              background: theme.cardAlt, borderRadius: 10, padding: 14, marginBottom: 10,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              border: `1px solid ${theme.border}`,
             }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{face.face_id}</div>
+                <div style={{ fontWeight: 600, fontSize: 15, color: theme.text }}>{face.face_id}</div>
                 <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
-                  {new Date(face.created_at).toLocaleDateString()}
+                  {face.created_at ? new Date(face.created_at).toLocaleDateString() : '—'}
                 </div>
               </div>
               {confirmDelete === face.face_id ? (
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button style={{
-                    background: 'transparent', border: `1px solid ${theme.accent}`, color: theme.accent,
-                    borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  }} onClick={() => setConfirmDelete(null)}>Cancel</button>
-                  <button style={{
-                    background: theme.danger, border: 'none', color: '#fff',
-                    borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  }} onClick={() => handleDelete(face.face_id)} disabled={deleting === face.face_id}>
-                    {deleting === face.face_id ? '...' : 'Confirm'}
-                  </button>
+                  <button onClick={() => setConfirmDelete(null)}
+                    style={{
+                      background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textMuted,
+                      borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                    }}>Cancel</button>
+                  <button onClick={() => handleDelete(face.face_id)} disabled={deleting === face.face_id}
+                    style={{
+                      background: theme.danger, border: 'none', color: '#fff',
+                      borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}>{deleting === face.face_id ? '...' : 'Delete'}</button>
                 </div>
               ) : (
-                <button style={{
-                  background: 'transparent', border: `1px solid ${theme.danger}`, color: theme.danger,
-                  borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                }} onClick={() => setConfirmDelete(face.face_id)}>Delete</button>
+                <button onClick={() => setConfirmDelete(face.face_id)}
+                  style={{
+                    background: 'transparent', border: `1px solid ${theme.danger}`, color: theme.danger,
+                    borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  }}>Delete</button>
               )}
             </div>
           ))}
