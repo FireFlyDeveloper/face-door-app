@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
-import AutoCaptureGuide, { type CapturedImage } from '../components/AutoCaptureGuide';
+import CaptureGuide, { type CapturedImage } from '../components/CaptureGuide';
 import { useBluetooth, RSSI_THRESHOLD } from '../hooks/useBluetooth';
 import { buildRegister, type BTResponse } from '../services/protocol';
 import { processImages } from '../services/imageProcessor';
@@ -114,7 +114,7 @@ export default function Register({ onBack, bt }: Props) {
               Enter a unique name. Max 5 faces total on the Pi.
             </div>
             <button style={btnP} onClick={handleRegister} disabled={!faceId.trim()}>
-              🔄 Start Auto-Capture
+              📸 Start Manual Capture
             </button>
           </div>
         )}
@@ -123,10 +123,10 @@ export default function Register({ onBack, bt }: Props) {
           <div>
             <div style={{ ...card, padding: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: theme.accentText, marginBottom: 8 }}>
-                📷 Look at the camera — auto-capturing 10 angles for {faceId}
+                📷 Tap the button to capture each of the 10 angles for {faceId}
               </div>
             </div>
-            <AutoCaptureGuide onComplete={handleCaptureComplete} onCancel={handleReset} />
+            <CaptureGuide onComplete={handleCaptureComplete} />
           </div>
         )}
 
