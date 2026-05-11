@@ -15,13 +15,8 @@ const CARD: React.CSSProperties = {
 };
 
 export default function Home({ onNavigate, bt }: HomeProps) {
-
-  // Auto-RSSI polling handled inside useBluetooth now
-
-  const devName = bt.connectedDevice?.name || bt.connectedDevice?.address;
   const nearbyOk = bt.status === 'connected' && bt.isNearby !== false;
 
-  // ── Action buttons ────────────────────────────────────────────────────
   function Action({ icon, title, desc, page, disabled }: {
     icon: string; title: string; desc: string; page: Page; disabled?: boolean;
   }) {
@@ -57,7 +52,7 @@ export default function Home({ onNavigate, bt }: HomeProps) {
 
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* ── Status Card ─────────────────────────────────────────────── */}
+        {/* ── Status ──────────────────────────────────────────────────── */}
         <div style={{
           ...CARD, border: `1px solid ${theme.border}`,
           background: bt.status === 'connected'
@@ -68,8 +63,7 @@ export default function Home({ onNavigate, bt }: HomeProps) {
                 ? 'linear-gradient(135deg, #ffebee 0%, #fce4ec 100%)'
                 : theme.card,
         }}>
-          {/* Top row: icon + status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
               width: 48, height: 48, borderRadius: 24,
               background: bt.status === 'connected' ? '#00c853' :
@@ -90,7 +84,7 @@ export default function Home({ onNavigate, bt }: HomeProps) {
                  bt.status === 'error' ? 'Disconnected' : 'Offline'}
               </div>
               <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 1 }}>
-                {bt.status === 'connected' ? devName :
+                {bt.status === 'connected' ? 'Door Pi' :
                  bt.status === 'connecting' ? 'Connecting to Pi...' :
                  bt.status === 'error' ? bt.error || 'Connection lost' :
                  'Enable Bluetooth'}
@@ -106,19 +100,9 @@ export default function Home({ onNavigate, bt }: HomeProps) {
             )}
           </div>
 
-          {/* RSSI bar */}
+          {/* Signal bar */}
           {bt.status === 'connected' && bt.rssi !== null && (
-            <div>
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                marginBottom: 4,
-              }}>
-                <span style={{ fontSize: 11, color: theme.textMuted }}>Signal</span>
-                <span style={{
-                  fontSize: 12, fontWeight: 700,
-                  color: bt.isNearby ? theme.success : theme.warning,
-                }}>{bt.rssi} dBm</span>
-              </div>
+            <div style={{ marginTop: 10 }}>
               <div style={{
                 height: 6, borderRadius: 3, background: '#e0e0e0', overflow: 'hidden',
               }}>
@@ -130,15 +114,14 @@ export default function Home({ onNavigate, bt }: HomeProps) {
                     : 'linear-gradient(90deg, #ff8f00, #ffd740)',
                 }} />
               </div>
-              {!bt.isNearby && bt.rssi !== null && (
+              {!bt.isNearby && (
                 <div style={{ fontSize: 11, color: theme.warning, marginTop: 4 }}>
-                  📡 Move closer to the door
+                  Move closer to the door
                 </div>
               )}
             </div>
           )}
 
-          {/* Retry button on error */}
           {bt.status === 'error' && bt.lastMac && (
             <button onClick={() => bt.connect(bt.lastMac!)}
               style={{
@@ -151,60 +134,15 @@ export default function Home({ onNavigate, bt }: HomeProps) {
           )}
         </div>
 
-        {/* ── Action Grid ─────────────────────────────────────────────── */}
+        {/* ── Actions ─────────────────────────────────────────────────── */}
         <Action icon="📷" title="Register Face"
-          desc="Auto-capture 10 angles via camera"
-          page="register" disabled={!nearbyOk} />
+          desc="Auto-capture 10 face angles" page="register" disabled={!nearbyOk} />
 
         <Action icon="👤" title="Manage Faces"
-          desc="View, add, or delete registered faces"
-          page="faces" disabled={!nearbyOk} />
+          desc="View and delete registered faces" page="faces" disabled={!nearbyOk} />
 
         <Action icon="📋" title="Activity Log"
-          desc="Pull door access history from Pi"
-          page="log" disabled={bt.status !== 'connected'} />
-
-        {/* ── Quick Status Tiles ──────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{
-            ...CARD, flex: 1, textAlign: 'center', padding: '14px 10px',
-            border: `1px solid ${theme.border}`,
-          }}>
-            <div style={{ fontSize: 24, marginBottom: 2 }}>📱</div>
-            <div style={{ fontSize: 11, color: theme.textMuted }}>Protocol</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: theme.accentText }}>
-              RFCOMM SPP
-            </div>
-          </div>
-          <div style={{
-            ...CARD, flex: 1, textAlign: 'center', padding: '14px 10px',
-            border: `1px solid ${theme.border}`,
-          }}>
-            <div style={{ fontSize: 24, marginBottom: 2 }}>🔒</div>
-            <div style={{ fontSize: 11, color: theme.textMuted }}>Security</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: theme.accentText }}>
-              Face + Liveness
-            </div>
-          </div>
-          <div style={{
-            ...CARD, flex: 1, textAlign: 'center', padding: '14px 10px',
-            border: `1px solid ${theme.border}`,
-          }}>
-            <div style={{ fontSize: 24, marginBottom: 2 }}>⚡</div>
-            <div style={{ fontSize: 11, color: theme.textMuted }}>Pi Status</div>
-            <div style={{
-              fontSize: 13, fontWeight: 600,
-              color: bt.status === 'connected' ? theme.success : theme.textMuted,
-            }}>
-              {bt.status === 'connected' ? 'Online' : '—'}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Info Footer ──────────────────────────────────────────────── */}
-        <div style={{ textAlign: 'center', padding: '8px 0 20px', fontSize: 11, color: theme.textMuted }}>
-          Face Door System v1.0 — Pair with your Pi via Bluetooth first
-        </div>
+          desc="View door access history" page="log" disabled={bt.status !== 'connected'} />
       </div>
     </div>
   );
