@@ -3,7 +3,6 @@ import TopBar from '../components/TopBar';
 import CaptureGuide, { type CapturedImage } from '../components/CaptureGuide';
 import { useBluetooth, RSSI_THRESHOLD } from '../hooks/useBluetooth';
 import { buildRegister, type BTResponse } from '../services/protocol';
-import { processImages } from '../services/imageProcessor';
 import { theme } from '../theme';
 
 interface Props {
@@ -61,13 +60,10 @@ export default function Register({ onBack, bt }: Props) {
 
   const handleSubmit = useCallback(async () => {
     if (capturedImages.length < 10) return;
-    setProgress(10); setError(''); setMessage('Processing images...');
+    setProgress(10); setError(''); setMessage('Sending to Pi via Bluetooth...');
     try {
-      const files = capturedImages.map((c) => c.file);
-      const processed = await processImages(files);
-      setProgress(30);
-      setMessage('Sending to Pi via Bluetooth...');
-      const cmd = buildRegister(faceId.trim(), processed.map((p) => p.base64));
+      const base64Images = capturedImages.map((c) => c.base64);
+      const cmd = buildRegister(faceId.trim(), base64Images);
       setProgress(60);
       if (abortRef.current) return;
       const response = (await bt.sendCommand(cmd)) as unknown as BTResponse;
@@ -126,7 +122,7 @@ export default function Register({ onBack, bt }: Props) {
                 📷 Tap the button to capture each of the 10 angles for {faceId}
               </div>
             </div>
-            <CaptureGuide onComplete={handleCaptureComplete} />
+            <CaptureGuide onComplete={handleCaptureComplete} sendCommand={bt.sendCommand} />
           </div>
         )}
 

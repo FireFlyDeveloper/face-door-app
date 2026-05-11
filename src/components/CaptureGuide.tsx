@@ -2,7 +2,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 
 // 10 capture positions with guide descriptions
 const CAPTURE_POSITIONS = [
-  { id: 0, label: 'Front', desc: 'Look straight at camera' },
+  { id: 0, label: 'Front', desc: 'Look straight at Pi camera' },
   { id: 1, label: 'Front-Left', desc: 'Turn head slightly left' },
   { id: 2, label: 'Front-Right', desc: 'Turn head slightly right' },
   { id: 3, label: 'Up', desc: 'Tilt head up slightly' },
@@ -11,18 +11,21 @@ const CAPTURE_POSITIONS = [
   { id: 6, label: 'Right-Profile', desc: 'Turn head ~45° right' },
   { id: 7, label: 'Top-Left', desc: 'Look up-left' },
   { id: 8, label: 'Top-Right', desc: 'Look up-right' },
-  { id: 9, label: 'Close-Up', desc: 'Move closer to camera' },
+  { id: 9, label: 'Close-Up', desc: 'Move closer to Pi camera' },
 ] as const;
+
+const POLL_INTERVAL = 200; // ms between frame requests
 
 interface CapturedImage {
   position: number;
   label: string;
-  file: File;
+  base64: string;
   previewUrl: string;
 }
 
 interface Props {
   onComplete: (images: CapturedImage[]) => void;
+  sendCommand: (cmd: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -34,11 +37,13 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#000',
     borderRadius: 12,
     overflow: 'hidden',
+    aspectRatio: '4/3',
   },
-  video: {
+  img: {
     width: '100%',
+    height: '100%',
     display: 'block',
-    transform: 'scaleX(-1)',
+    objectFit: 'contain',
   },
   overlay: {
     position: 'absolute',
@@ -126,6 +131,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     objectFit: 'cover',
     border: '2px solid transparent',
+    cursor: 'pointer',
   },
   thumbnailActive: {
     width: 48,
@@ -133,6 +139,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     objectFit: 'cover',
     border: '2px solid #64ffda',
+    cursor: 'pointer',
   },
   emptyThumb: {
     width: 48,
@@ -147,97 +154,131 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     flexShrink: 0,
   },
+  loading: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    color: '#64ffda',
+    fontSize: 14,
+  },
+  error: {
+    padding: 20,
+    textAlign: 'center' as const,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ff1744',
+    marginBottom: 12,
+  },
+  mutedText: {
+    fontSize: 13,
+    color: '#78909c',
+  },
 };
 
-export default function CaptureGuide({ onComplete }: Props) {
+export default function CaptureGuide({ onComplete, sendCommand }: Props) {
   const [currentPos, setCurrentPos] = useState(0);
   const [captured, setCaptured] = useState<CapturedImage[]>([]);
-  const [cameraReady, setCameraReady] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [streamError, setStreamError] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
   const position = CAPTURE_POSITIONS[currentPos];
   const isComplete = currentPos >= CAPTURE_POSITIONS.length;
 
-  // ── Start camera on mount ──
-  useEffect(() => {
-    let cancelled = false;
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: false,
-        });
-        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setCameraReady(true);
-        }
-      } catch (err: any) {
-        if (!cancelled) setCameraError(err?.message || 'Camera access denied');
+  // ── Poll Pi camera frames ──
+  const fetchFrame = useCallback(async () => {
+    if (!mountedRef.current) return;
+    try {
+      const resp = await sendCommand({ action: 'GET_FRAME' }) as Record<string, unknown>;
+      if (!mountedRef.current) return;
+      if (resp?.status === 'OK') {
+        const b64 = resp.frame as string;
+        const url = `data:image/jpeg;base64,${b64}`;
+        setPreview(url);
+        setStreaming(true);
+        setStreamError('');
+      } else {
+        setStreamError('No frame from Pi');
+      }
+    } catch (err: unknown) {
+      if (mountedRef.current) {
+        setStreamError(err instanceof Error ? err.message : 'Connection lost');
+        setStreaming(false);
       }
     }
-    startCamera();
-    return () => {
-      cancelled = true;
-      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+  }, [sendCommand]);
+
+  // Start polling on mount
+  useEffect(() => {
+    mountedRef.current = true;
+    // Kick off first frame
+    fetchFrame();
+    // Continuous polling
+    const poll = () => {
+      pollingRef.current = setTimeout(async () => {
+        await fetchFrame();
+        if (mountedRef.current) poll();
+      }, POLL_INTERVAL);
     };
-  }, []);
+    poll();
+    return () => {
+      mountedRef.current = false;
+      if (pollingRef.current) clearTimeout(pollingRef.current);
+    };
+  }, [fetchFrame]);
 
-  const handleCaptureClick = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || !cameraReady) return;
+  const handleCaptureClick = useCallback(async () => {
+    if (capturing || !preview) return;
+    setCapturing(true);
 
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    try {
+      // Request a fresh frame specifically for capture (not the polled preview)
+      const resp = await sendCommand({ action: 'GET_FRAME' }) as Record<string, unknown>;
+      if (resp?.status !== 'OK' || !resp.frame) {
+        throw new Error('Failed to capture from Pi');
+      }
 
-    // Flip horizontally to match mirrored preview
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-    ctx.restore();
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const file = new File([blob], `face_${position.id}.jpg`, { type: 'image/jpeg' });
-      const previewUrl = URL.createObjectURL(blob);
+      const b64 = resp.frame as string;
+      const url = `data:image/jpeg;base64,${b64}`;
 
       const newCapture: CapturedImage = {
         position: position.id,
         label: position.label,
-        file,
-        previewUrl,
+        base64: b64,
+        previewUrl: url,
       };
 
       const updated = [...captured, newCapture];
       setCaptured(updated);
       setCurrentPos((p) => p + 1);
 
-      // All 10 done — notify parent
+      // All 10 done
       if (updated.length >= CAPTURE_POSITIONS.length) {
         onComplete(updated);
       }
-    }, 'image/jpeg', 0.85);
-  }, [captured, position, cameraReady, onComplete]);
+    } catch (err: unknown) {
+      setStreamError(err instanceof Error ? err.message : 'Capture failed');
+    } finally {
+      setCapturing(false);
+    }
+  }, [capturing, preview, captured, position, sendCommand, onComplete]);
 
   const handleRetake = useCallback((posIndex: number) => {
     setCaptured((prev) => prev.filter((c) => c.position !== posIndex));
     setCurrentPos(posIndex);
   }, []);
 
-  // ── Camera error screen ──
-  if (cameraError) {
+  // ── Error screen ──
+  if (streamError && !preview) {
     return (
-      <div style={{ padding: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 16, color: '#ff1744', marginBottom: 12 }}>⚠️ {cameraError}</div>
-        <div style={{ fontSize: 13, color: '#78909c' }}>Allow camera access and try again.</div>
+      <div style={styles.error}>
+        <div style={styles.errorText}>⚠️ {streamError}</div>
+        <div style={styles.mutedText}>Make sure the Pi is running and you're connected via Bluetooth.</div>
       </div>
     );
   }
@@ -245,17 +286,11 @@ export default function CaptureGuide({ onComplete }: Props) {
   return (
     <div>
       <div style={styles.container}>
-        {/* Live camera preview */}
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={styles.video}
-        />
-
-        {/* Hidden canvas for frame capture */}
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        {preview ? (
+          <img src={preview} alt="Pi Camera" style={styles.img} />
+        ) : (
+          <div style={styles.loading}>Connecting to Pi camera...</div>
+        )}
 
         {/* Guide overlay */}
         <div style={styles.overlay}>
@@ -275,19 +310,16 @@ export default function CaptureGuide({ onComplete }: Props) {
         <button
           style={{
             ...styles.captureBtn,
-            opacity: cameraReady ? 1 : 0.4,
+            opacity: preview && !capturing ? 1 : 0.4,
           }}
           onClick={handleCaptureClick}
-          disabled={!cameraReady}
+          disabled={!preview || capturing}
           aria-label="Capture"
         />
 
         {/* Retake last */}
         {captured.length > 0 && (
-          <button
-            style={styles.retakeBtn}
-            onClick={() => handleRetake(captured[captured.length - 1].position)}
-          >
+          <button style={styles.retakeBtn} onClick={() => handleRetake(captured[captured.length - 1].position)}>
             Retake
           </button>
         )}
