@@ -98,6 +98,11 @@ function discoverUnpaired(): Promise<BTDevice[]> {
 async function sendCommand(command: Record<string, unknown>): Promise<Record<string, unknown>> {
   const json = JSON.stringify(command) + NEWLINE;
   await write(json);
+  // Clear buffer before reading to discard stale data (stray newlines on connect)
+  const bt = getBluetoothSerial();
+  if (bt && typeof bt.clear === 'function') {
+    await new Promise<void>((resolve) => bt.clear(resolve, () => resolve()));
+  }
   const raw = await readUntil(NEWLINE);
   const trimmed = raw.trim();
   if (!trimmed) throw new Error('Empty response from Pi');
