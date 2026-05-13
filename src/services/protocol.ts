@@ -1,12 +1,22 @@
 /**
  * Bluetooth JSON protocol helpers.
  * Matches the Pi's bluetooth_server.py command format.
+ *
+ * Registration uses a two-phase protocol:
+ *   1. REGISTER_IMAGE — send one base64 image, Pi returns OK + index
+ *   2. REGISTER_FINALIZE — after all 10 images, Pi averages & saves
+ * This prevents long BT timeouts (ArcFace takes ~4s per image on Pi 4B).
  */
 
-export interface RegisterCommand {
-  action: 'REGISTER';
+export interface RegisterImageCommand {
+  action: 'REGISTER_IMAGE';
   face_id: string;
-  images: string[];  // base64 JPEG strings
+  image: string;  // single base64 JPEG string
+}
+
+export interface RegisterFinalizeCommand {
+  action: 'REGISTER_FINALIZE';
+  face_id: string;
 }
 
 export interface DeleteCommand {
@@ -28,7 +38,8 @@ export interface GetLogCommand {
 }
 
 export type BTCommand =
-  | RegisterCommand
+  | RegisterImageCommand
+  | RegisterFinalizeCommand
   | DeleteCommand
   | ListCommand
   | PingCommand
@@ -38,6 +49,8 @@ export interface BTResponse {
   status: 'OK' | 'ERROR';
   message?: string;
   response?: string;
+  index?: number;          // current image index for REGISTER_IMAGE
+  total?: number;          // total expected images
   rssi?: number;           // Bluetooth RSSI in dBm
   faces?: Array<{
     face_id: string;
@@ -57,8 +70,12 @@ export function buildPing(): Record<string, unknown> {
   return { action: 'PING' };
 }
 
-export function buildRegister(faceId: string, images: string[]): Record<string, unknown> {
-  return { action: 'REGISTER', face_id: faceId, images };
+export function buildRegisterImage(faceId: string, base64: string): Record<string, unknown> {
+  return { action: 'REGISTER_IMAGE', face_id: faceId, image: base64 };
+}
+
+export function buildRegisterFinalize(faceId: string): Record<string, unknown> {
+  return { action: 'REGISTER_FINALIZE', face_id: faceId };
 }
 
 export function buildDelete(faceId: string): Record<string, unknown> {

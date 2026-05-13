@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
 import CaptureGuide, { type CapturedImage } from '../components/CaptureGuide';
 import { useBluetooth, RSSI_THRESHOLD } from '../hooks/useBluetooth';
-import { buildRegister, type BTResponse } from '../services/protocol';
+import { buildRegisterImage, buildRegisterFinalize, type BTResponse } from '../services/protocol';
 import { processImages } from '../services/imageProcessor';
 
 interface Props {
@@ -127,26 +127,46 @@ export default function Register({ onBack, bt }: Props) {
     setMessage('Processing images...');
 
     try {
-      // Step 1: Process images (compress, resize, base64)
+      // Step 1: Process all images (compress, resize, base64)
       const files = capturedImages.map((c) => c.file);
       const processed = await processImages(files);
-      setProgress(30);
-
-      // Step 2: Send REGISTER command via Bluetooth
-      setMessage('Sending to Pi via Bluetooth...');
-      const cmd = buildRegister(faceId.trim(), processed.map((p) => p.base64));
-      setProgress(60);
+      setProgress(20);
 
       if (abortRef.current) return;
 
-      const response = (await bt.sendCommand(cmd)) as unknown as BTResponse;
+      // Step 2: Send each image one at a time over Bluetooth
+      // Each image takes ~3-4s for Pi to ArcFace-encode, so sending one
+      // at a time keeps each round trip short enough to avoid BT timeout.
+      for (let i = 0; i < processed.length; i++) {
+        if (abortRef.current) return;
+        setMessage(`Sending image ${i + 1}/${processed.length}...`);
+        setProgress(20 + Math.round((i / processed.length) * 60));
+
+        const cmd = buildRegisterImage(faceId.trim(), processed[i].base64);
+        const resp = (await bt.sendCommand(cmd)) as unknown as BTResponse;
+
+        if (resp.status !== 'OK') {
+          setError(resp.message || `Image ${i + 1} failed`);
+          setStep('error');
+          return;
+        }
+      }
+
+      if (abortRef.current) return;
+
+      // Step 3: Finalize — Pi averages all encodings and saves
+      setMessage('Finalizing registration...');
+      setProgress(85);
+      const finalCmd = buildRegisterFinalize(faceId.trim());
+      const finalResp = (await bt.sendCommand(finalCmd)) as unknown as BTResponse;
+
       setProgress(100);
 
-      if (response.status === 'OK') {
+      if (finalResp.status === 'OK') {
         setMessage(`✅ Face "${faceId}" registered successfully!`);
         setStep('done');
       } else {
-        setError(response.message || 'Registration failed');
+        setError(finalResp.message || 'Finalization failed');
         setStep('error');
       }
     } catch (err: unknown) {
