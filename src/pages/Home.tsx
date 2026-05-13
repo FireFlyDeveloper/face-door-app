@@ -100,6 +100,53 @@ export default function Home({ onNavigate, bt }: HomeProps) {
             )}
           </div>
 
+          {/* Connection pair list when idle */}
+          {bt.status === 'idle' && (
+            <div style={{ marginTop: 12 }}>
+              {bt.pairedDevices.length === 0 ? (
+                <button onClick={() => bt.listPaired()}
+                  style={{
+                    width: '100%', padding: 10, borderRadius: 10,
+                    border: 'none', background: theme.accent, color: '#fff',
+                    fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                  }}>
+                  🔍 Scan for paired devices
+                </button>
+              ) : (
+                <div>
+                  <div style={{ fontSize: 13, color: theme.textMuted, marginBottom: 6 }}>
+                    Paired devices — tap to connect:
+                  </div>
+                  {bt.pairedDevices.map((d) => (
+                    <button key={d.address} onClick={() => bt.connect(d.address)}
+                      style={{
+                        display: 'block', width: '100%', padding: '8px 12px', marginBottom: 4,
+                        borderRadius: 8, border: `1px solid ${theme.border}`,
+                        background: theme.card, color: theme.text,
+                        textAlign: 'left', cursor: 'pointer', fontSize: 13,
+                      }}>
+                      <span style={{ fontWeight: 600 }}>{d.name || d.address}</span>
+                      <span style={{ color: theme.textMuted, marginLeft: 8, fontSize: 11 }}>
+                        {d.address}
+                      </span>
+                    </button>
+                  ))}
+                  <button onClick={() => {
+                    bt.listPaired();
+                    bt.disconnect();
+                  }}
+                    style={{
+                      marginTop: 4, background: 'transparent', border: 'none',
+                      color: theme.accent, fontSize: 12, cursor: 'pointer',
+                      textDecoration: 'underline', padding: 4,
+                    }}>
+                    ↻ Refresh list
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Signal bar */}
           {bt.status === 'connected' && bt.rssi !== null && (
             <div style={{ marginTop: 10 }}>
@@ -123,14 +170,39 @@ export default function Home({ onNavigate, bt }: HomeProps) {
           )}
 
           {bt.status === 'error' && bt.lastMac && (
-            <button onClick={() => bt.connect(bt.lastMac!)}
-              style={{
-                marginTop: 10, width: '100%', padding: 10, borderRadius: 10,
-                border: 'none', background: theme.accent, color: '#fff',
-                fontWeight: 600, fontSize: 14, cursor: 'pointer',
-              }}>
-              Retry Connection
-            </button>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 13, color: theme.textMuted, marginBottom: 6 }}>
+                Tap a device to retry:
+              </div>
+              {bt.pairedDevices.length === 0 ? (
+                <button onClick={() => {
+                  bt.listPaired();
+                  bt.connect(bt.lastMac!);
+                }}
+                  style={{
+                    width: '100%', padding: 10, borderRadius: 10,
+                    border: 'none', background: theme.accent, color: '#fff',
+                    fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                  }}>
+                  🔍 Retry Connection
+                </button>
+              ) : (
+                bt.pairedDevices.map((d) => (
+                  <button key={d.address} onClick={() => bt.connect(d.address)}
+                    style={{
+                      display: 'block', width: '100%', padding: '8px 12px', marginBottom: 4,
+                      borderRadius: 8, border: `1px solid ${theme.border}`,
+                      background: theme.card, color: theme.text,
+                      textAlign: 'left', cursor: 'pointer', fontSize: 13,
+                    }}>
+                    <span style={{ fontWeight: 600 }}>{d.name || d.address}</span>
+                    <span style={{ color: theme.textMuted, marginLeft: 8, fontSize: 11 }}>
+                      {d.address}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           )}
         </div>
 
