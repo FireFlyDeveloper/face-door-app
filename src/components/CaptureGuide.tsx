@@ -1,8 +1,8 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 
 // 10 capture positions with guide descriptions
 const CAPTURE_POSITIONS = [
-  { id: 0, label: 'Front', desc: 'Look straight at Pi camera' },
+  { id: 0, label: 'Front', desc: 'Look straight at camera' },
   { id: 1, label: 'Front-Left', desc: 'Turn head slightly left' },
   { id: 2, label: 'Front-Right', desc: 'Turn head slightly right' },
   { id: 3, label: 'Up', desc: 'Tilt head up slightly' },
@@ -11,21 +11,18 @@ const CAPTURE_POSITIONS = [
   { id: 6, label: 'Right-Profile', desc: 'Turn head ~45° right' },
   { id: 7, label: 'Top-Left', desc: 'Look up-left' },
   { id: 8, label: 'Top-Right', desc: 'Look up-right' },
-  { id: 9, label: 'Close-Up', desc: 'Move closer to Pi camera' },
+  { id: 9, label: 'Close-Up', desc: 'Move closer to camera' },
 ] as const;
-
-const POLL_INTERVAL = 200; // ms between frame requests
 
 interface CapturedImage {
   position: number;
   label: string;
-  base64: string;
+  file: File;
   previewUrl: string;
 }
 
 interface Props {
   onComplete: (images: CapturedImage[]) => void;
-  sendCommand: (cmd: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -37,13 +34,10 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#000',
     borderRadius: 12,
     overflow: 'hidden',
-    aspectRatio: '4/3',
   },
-  img: {
+  video: {
     width: '100%',
-    height: '100%',
     display: 'block',
-    objectFit: 'contain',
   },
   overlay: {
     position: 'absolute',
@@ -131,7 +125,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     objectFit: 'cover',
     border: '2px solid transparent',
-    cursor: 'pointer',
   },
   thumbnailActive: {
     width: 48,
@@ -139,158 +132,69 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     objectFit: 'cover',
     border: '2px solid #64ffda',
-    cursor: 'pointer',
   },
-  emptyThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 6,
-    background: '#222',
-    border: '2px solid #333',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#555',
-    fontSize: 10,
-    flexShrink: 0,
-  },
-  loading: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-    color: '#64ffda',
-    fontSize: 14,
-  },
-  error: {
-    padding: 20,
-    textAlign: 'center' as const,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#ff1744',
-    marginBottom: 12,
-  },
-  mutedText: {
-    fontSize: 13,
-    color: '#78909c',
+  hiddenInput: {
+    display: 'none',
   },
 };
 
-export default function CaptureGuide({ onComplete, sendCommand }: Props) {
+export default function CaptureGuide({ onComplete }: Props) {
   const [currentPos, setCurrentPos] = useState(0);
   const [captured, setCaptured] = useState<CapturedImage[]>([]);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [streamError, setStreamError] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const position = CAPTURE_POSITIONS[currentPos];
   const isComplete = currentPos >= CAPTURE_POSITIONS.length;
 
-  // ── Poll Pi camera frames ──
-  const fetchFrame = useCallback(async () => {
-    if (!mountedRef.current) return;
-    try {
-      const resp = await sendCommand({ action: 'GET_FRAME' }) as Record<string, unknown>;
-      if (!mountedRef.current) return;
-      if (resp?.status === 'OK') {
-        const b64 = resp.frame as string;
-        const url = `data:image/jpeg;base64,${b64}`;
-        setPreview(url);
-        setStreaming(true);
-        setStreamError('');
-      } else {
-        setStreamError('No frame from Pi');
-      }
-    } catch (err: unknown) {
-      if (mountedRef.current) {
-        setStreamError(err instanceof Error ? err.message : 'Connection lost');
-        setStreaming(false);
-      }
-    }
-  }, [sendCommand]);
+  const handleCaptureClick = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
 
-  // Start polling on mount
-  useEffect(() => {
-    mountedRef.current = true;
-    // Kick off first frame
-    fetchFrame();
-    // Continuous polling
-    const poll = () => {
-      pollingRef.current = setTimeout(async () => {
-        await fetchFrame();
-        if (mountedRef.current) poll();
-      }, POLL_INTERVAL);
+  const handleFileCapture = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const newCapture: CapturedImage = {
+      position: position.id,
+      label: position.label,
+      file,
+      previewUrl: URL.createObjectURL(file),
     };
-    poll();
-    return () => {
-      mountedRef.current = false;
-      if (pollingRef.current) clearTimeout(pollingRef.current);
-    };
-  }, [fetchFrame]);
 
-  const handleCaptureClick = useCallback(async () => {
-    if (capturing || !preview) return;
-    setCapturing(true);
+    const updated = [...captured, newCapture];
+    setCaptured(updated);
+    setCurrentPos((p) => p + 1);
 
-    try {
-      // Request a fresh frame specifically for capture (not the polled preview)
-      const resp = await sendCommand({ action: 'GET_FRAME' }) as Record<string, unknown>;
-      if (resp?.status !== 'OK' || !resp.frame) {
-        throw new Error('Failed to capture from Pi');
-      }
-
-      const b64 = resp.frame as string;
-      const url = `data:image/jpeg;base64,${b64}`;
-
-      const newCapture: CapturedImage = {
-        position: position.id,
-        label: position.label,
-        base64: b64,
-        previewUrl: url,
-      };
-
-      const updated = [...captured, newCapture];
-      setCaptured(updated);
-      setCurrentPos((p) => p + 1);
-
-      // All 10 done
-      if (updated.length >= CAPTURE_POSITIONS.length) {
-        onComplete(updated);
-      }
-    } catch (err: unknown) {
-      setStreamError(err instanceof Error ? err.message : 'Capture failed');
-    } finally {
-      setCapturing(false);
-    }
-  }, [capturing, preview, captured, position, sendCommand, onComplete]);
+    // Reset input so the same file can be selected again
+    if (inputRef.current) inputRef.current.value = '';
+  }, [captured, position]);
 
   const handleRetake = useCallback((posIndex: number) => {
     setCaptured((prev) => prev.filter((c) => c.position !== posIndex));
     setCurrentPos(posIndex);
   }, []);
 
-  // ── Error screen ──
-  if (streamError && !preview) {
-    return (
-      <div style={styles.error}>
-        <div style={styles.errorText}>⚠️ {streamError}</div>
-        <div style={styles.mutedText}>Make sure the Pi is running and you're connected via Bluetooth.</div>
-      </div>
-    );
+  // All 10 captured — notify parent
+  if (isComplete && captured.length >= 10) {
+    onComplete(captured);
+    return null;
   }
 
   return (
     <div>
       <div style={styles.container}>
-        {preview ? (
-          <img src={preview} alt="Pi Camera" style={styles.img} />
-        ) : (
-          <div style={styles.loading}>Connecting to Pi camera...</div>
-        )}
+        {/* Hidden camera input */}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={styles.hiddenInput}
+          onChange={handleFileCapture}
+        />
+
+        {/* Dark placeholder (camera viewfinder substitute) */}
+        <div style={{ width: '100%', aspectRatio: '3/4', background: '#111' }} />
 
         {/* Guide overlay */}
         <div style={styles.overlay}>
@@ -304,22 +208,17 @@ export default function CaptureGuide({ onComplete, sendCommand }: Props) {
         <div style={styles.positionDesc}>{position.desc}</div>
 
         {/* Progress */}
-        <div style={styles.progress}>{captured.length}/{CAPTURE_POSITIONS.length} captured</div>
+        <div style={styles.progress}>{captured.length}/10 captured</div>
 
         {/* Capture button */}
-        <button
-          style={{
-            ...styles.captureBtn,
-            opacity: preview && !capturing ? 1 : 0.4,
-          }}
-          onClick={handleCaptureClick}
-          disabled={!preview || capturing}
-          aria-label="Capture"
-        />
+        <button style={styles.captureBtn} onClick={handleCaptureClick} aria-label="Capture" />
 
         {/* Retake last */}
         {captured.length > 0 && (
-          <button style={styles.retakeBtn} onClick={() => handleRetake(captured[captured.length - 1].position)}>
+          <button
+            style={styles.retakeBtn}
+            onClick={() => handleRetake(captured[captured.length - 1].position)}
+          >
             Retake
           </button>
         )}
@@ -336,10 +235,21 @@ export default function CaptureGuide({ onComplete, sendCommand }: Props) {
                 src={cap.previewUrl}
                 alt={pos.label}
                 style={pos.id === currentPos ? styles.thumbnailActive : styles.thumbnail}
-                onClick={() => handleRetake(pos.id)}
               />
             ) : (
-              <div key={pos.id} style={styles.emptyThumb}>
+              <div
+                key={pos.id}
+                style={{
+                  ...styles.thumbnail,
+                  background: '#222',
+                  border: '2px solid #333',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#555',
+                  fontSize: 10,
+                }}
+              >
                 {pos.label.slice(0, 2)}
               </div>
             );

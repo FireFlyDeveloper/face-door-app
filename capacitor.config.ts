@@ -1,4 +1,4 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.facedoor.app',
@@ -9,6 +9,14 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
+  },
+  plugins: {
+    CapacitorCookies: {
+      enabled: true,
+    },
+    CapacitorHttp: {
+      enabled: true,
+    },
   },
 };
 

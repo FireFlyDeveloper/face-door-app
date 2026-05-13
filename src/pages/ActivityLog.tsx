@@ -1,117 +1,184 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import TopBar from '../components/TopBar';
 import { useBluetooth } from '../hooks/useBluetooth';
 import { buildGetLog, type BTResponse } from '../services/protocol';
-import { theme } from '../theme';
 
 interface LogEntry {
-  timestamp: string; face_id: string; result: string; details?: string;
+  timestamp: string;
+  face_id: string;
+  result: string;
+  details?: string;
 }
-interface Props { onBack: () => void; bt: ReturnType<typeof useBluetooth> }
+
+interface Props {
+  onBack: () => void;
+  bt: ReturnType<typeof useBluetooth>;
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    maxWidth: 480,
+    margin: '0 auto',
+    minHeight: '100vh',
+    background: '#0f0f1a',
+    color: '#e0e0e0',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  content: {
+    padding: 16,
+  },
+  card: {
+    background: '#1a1a2e',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  heading: {
+    fontSize: 16,
+    fontWeight: 600,
+    marginBottom: 12,
+    color: '#64ffda',
+  },
+  btn: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 8,
+    border: 'none',
+    fontWeight: 600,
+    fontSize: 15,
+    cursor: 'pointer',
+  },
+  btnPrimary: {
+    background: '#64ffda',
+    color: '#0f0f1a',
+  },
+  error: {
+    color: '#ff1744',
+    fontSize: 13,
+    marginTop: 8,
+  },
+  emptyState: {
+    textAlign: 'center',
+    padding: 40,
+    color: '#666',
+    fontSize: 14,
+  },
+  entry: {
+    background: '#16213e',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeft: '3px solid #333',
+  },
+  entryGranted: {
+    borderLeft: '3px solid #00e676',
+  },
+  entryRejected: {
+    borderLeft: '3px solid #ff1744',
+  },
+  entryTime: {
+    fontSize: 11,
+    color: '#666',
+    fontFamily: 'monospace',
+  },
+  entryFaceId: {
+    fontSize: 14,
+    fontWeight: 600,
+    marginTop: 2,
+  },
+  entryResult: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: 600,
+  },
+  entryDetails: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
+  },
+};
 
 export default function ActivityLog({ onBack, bt }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const loadLog = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-      const resp = (await bt.sendCommand(buildGetLog(100))) as unknown as BTResponse;
-      if (resp.status === 'OK' && resp.entries) setEntries(resp.entries);
-      else { setError(resp.message || 'Failed to load log'); setEntries([]); }
+      const response = (await bt.sendCommand(buildGetLog(100))) as unknown as BTResponse;
+      if (response.status === 'OK' && response.entries) {
+        setEntries(response.entries);
+      } else {
+        setError(response.message || 'Failed to load log');
+        setEntries([]);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Connection error');
-    } finally { setLoading(false); }
+      const msg = err instanceof Error ? err.message : 'Connection error';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
   }, [bt]);
 
-  useEffect(() => { loadLog(); }, [loadLog]);
-
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: theme.bg, color: theme.text }}>
+    <div style={styles.container}>
       <TopBar title="Activity Log" onBack={onBack} />
-      <div style={{ padding: 16 }}>
 
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          marginBottom: 16,
-        }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: theme.text }}>
-            Door Access Log
-            {entries.length > 0 && (
-              <span style={{ fontSize: 13, color: theme.textMuted, fontWeight: 400, marginLeft: 6 }}>
-                ({entries.length})
-              </span>
-            )}
-          </div>
-          <button onClick={loadLog} disabled={loading}
-            style={{
-              background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textMuted,
-              borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer',
-            }}>
-            {loading ? '...' : '↻ Refresh'}
+      <div style={styles.content}>
+        <div style={styles.card}>
+          <div style={styles.heading}>Door Access Log</div>
+          <button
+            style={{ ...styles.btn, ...styles.btnPrimary }}
+            onClick={loadLog}
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : '🔄 Pull Latest Log'}
           </button>
+          {error && <div style={styles.error}>{error}</div>}
         </div>
 
-        {error && (
-          <div style={{
-            background: '#ffebee', color: theme.danger, fontSize: 13, padding: '10px 14px',
-            borderRadius: 8, marginBottom: 12,
-          }}>{error}</div>
-        )}
-
-        {loading && entries.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted, fontSize: 14 }}>
-            Loading activity log...
-          </div>
-        )}
-
-        {!loading && entries.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted, fontSize: 14 }}>
+        {entries.length === 0 && !loading ? (
+          <div style={styles.emptyState}>
             No activity entries yet.
+            <br />
+            Press "Pull Latest Log" to fetch from Pi.
           </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {entries.map((entry, i) => {
+        ) : (
+          entries.map((entry, i) => {
             const isGranted = entry.result === 'GRANTED';
             const isRejected = entry.result === 'REJECTED';
-            const isUnknown = entry.face_id === 'unknown';
+            const time = new Date(entry.timestamp).toLocaleString();
+
             return (
-              <div key={i} style={{
-                background: theme.card, borderRadius: 12, padding: 14,
-                border: `1px solid ${theme.border}`,
-                borderLeft: `4px solid ${
-                  isGranted ? theme.success : isRejected ? theme.danger : theme.warning
-                }`,
-                boxShadow: theme.shadowCard,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>
-                      {isUnknown ? 'Unknown Person' : entry.face_id}
-                    </div>
-                    {entry.details && (
-                      <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
-                        {entry.details}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{
-                    fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
-                    background: isGranted ? '#e8f5e9' : isRejected ? '#ffebee' : '#fff8e1',
-                    color: isGranted ? theme.success : isRejected ? theme.danger : theme.warning,
-                  }}>
-                    {isGranted ? 'Granted' : isRejected ? 'Denied' : entry.result}
-                  </div>
+              <div
+                key={i}
+                style={{
+                  ...styles.entry,
+                  ...(isGranted ? styles.entryGranted : {}),
+                  ...(isRejected ? styles.entryRejected : {}),
+                }}
+              >
+                <div style={styles.entryTime}>{time}</div>
+                <div style={styles.entryFaceId}>
+                  {entry.face_id === 'unknown' ? '⚠️ Unknown' : entry.face_id}
                 </div>
-                <div style={{ fontSize: 11, color: theme.textMuted, fontFamily: 'monospace', marginTop: 6 }}>
-                  {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}
+                <div
+                  style={{
+                    ...styles.entryResult,
+                    color: isGranted ? '#00e676' : isRejected ? '#ff1744' : '#ffab00',
+                  }}
+                >
+                  {entry.result}
                 </div>
+                {entry.details && (
+                  <div style={styles.entryDetails}>{entry.details}</div>
+                )}
               </div>
             );
-          })}
-        </div>
+          })
+        )}
       </div>
     </div>
   );
