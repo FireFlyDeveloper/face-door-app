@@ -162,8 +162,7 @@ async function sendCommand(command: Record<string, unknown>): Promise<Record<str
         }
       }
     } catch {
-      // read failed silently — connection may be lost
-      throw new Error('Empty response from Pi');
+      // read returned no data yet — keep polling
     }
 
     // Wait before next poll
