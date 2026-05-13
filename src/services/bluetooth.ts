@@ -126,7 +126,12 @@ function discoverUnpaired(): Promise<BTDevice[]> {
 
 // ── High-level: Send Command + Read Response ────────────────────────────
 
-const RESPONSE_TIMEOUT_MS = 8000;
+/**
+ * Default timeout for Bluetooth responses.
+ * REGISTER can take 30-60s (10 base64 images over SPP + ArcFace encoding).
+ * Simple commands (PING, LIST) take <1s.
+ */
+const RESPONSE_TIMEOUT_MS = 60000;
 
 /**
  * Send a JSON command and wait for the newline-terminated response.
