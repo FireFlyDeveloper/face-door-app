@@ -2,8 +2,9 @@
  * Bluetooth RFCOMM SPP client wrapper.
  * Uses cordova-plugin-bluetooth-serial via window.bluetoothSerial.
  *
- * Uses subscribe() for receiving — more reliable than readUntil() which can
- * miss data that arrived before the readUntil callback was registered.
+ * Uses a polling read() approach for receiving — this is the most reliable
+ * pattern across Cordova and Capacitor. subscribe() and readUntil() can
+ * have timing/buffering issues.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -24,7 +25,7 @@ export interface BTPageState {
   status: BTStatus;
   connectedDevice: BTDevice | null;
   error: string | null;
-  inProgress: string | null; // e.g. "Registering..." or "Fetching..."
+  inProgress: string | null;
 }
 
 export type BTListener = (data: string) => void;
@@ -67,43 +68,16 @@ function write(data: string): Promise<void> {
   });
 }
 
-// Listeners registered via subscribe()
-const _responseListeners: Array<(line: string) => void> = [];
-let _subscribed = false;
-
-/** Subscribe once to incoming data and dispatch complete lines to listeners. */
-function ensureSubscribed(): void {
-  if (_subscribed) return;
-  const bt = getBluetoothSerial();
-  if (!bt || typeof bt.subscribe !== 'function') return;
-
-  let buffer = '';
-  bt.subscribe(
-    NEWLINE,
-    (data: string) => {
-      // Each chunk ends with delimiter
-      const line = (buffer + data).trim();
-      buffer = '';
-      if (!line) return;
-      for (const listener of _responseListeners) {
-        try { listener(line); } catch { /* ignore */ }
-      }
-    },
-    () => {
-      // subscribe failed or disconnected — reset for next connection
-      _subscribed = false;
-    },
-  );
-  _subscribed = true;
-}
-
-function clearSubscribe(): void {
-  const bt = getBluetoothSerial();
-  if (bt && typeof bt.unsubscribe === 'function') {
-    try { bt.unsubscribe(() => {}, () => {}); } catch { /* ignore */ }
-  }
-  _subscribed = false;
-  _responseListeners.length = 0;
+/**
+ * Read all available data from the Bluetooth buffer.
+ * Returns empty string if no data available.
+ */
+function readAll(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const bt = getBluetoothSerial();
+    if (!bt) return reject(new Error('BluetoothSerial not available'));
+    bt.read(resolve, (err: string) => reject(new Error(err)));
+  });
 }
 
 // ── Device Discovery ────────────────────────────────────────────────────
@@ -124,63 +98,82 @@ function discoverUnpaired(): Promise<BTDevice[]> {
   });
 }
 
+// ── Internal buffer for partial reads ────────────────────────────────────
+
+let _readBuffer = '';
+
 // ── High-level: Send Command + Read Response ────────────────────────────
 
-/**
- * Default timeout for Bluetooth responses.
- * REGISTER can take 30-60s (10 base64 images over SPP + ArcFace encoding).
- * Simple commands (PING, LIST) take <1s.
- */
+const POLL_INTERVAL_MS = 300;
 const RESPONSE_TIMEOUT_MS = 60000;
 
 /**
  * Send a JSON command and wait for the newline-terminated response.
- * Uses subscribe() under the hood for reliable delivery.
+ * Uses polling read() + internal buffer for maximum reliability.
  */
 async function sendCommand(command: Record<string, unknown>): Promise<Record<string, unknown>> {
-  // Ensure subscribe is running
-  ensureSubscribed();
-
-  // Clear stale data from the plugin buffer
+  // Clear any stale data from the plugin buffer
   const bt = getBluetoothSerial();
   if (bt && typeof bt.clear === 'function') {
     await new Promise<void>((resolve) => bt.clear(resolve, () => resolve()));
   }
 
-  // Create a promise that resolves on the next complete line
-  const response = await new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      const idx = _responseListeners.indexOf(handler);
-      if (idx !== -1) _responseListeners.splice(idx, 1);
-      reject(new Error('Empty response from Pi'));
-    }, RESPONSE_TIMEOUT_MS);
+  // Send command with newline terminator
+  const json = JSON.stringify(command) + NEWLINE;
+  await write(json);
 
-    const handler = (line: string) => {
-      clearTimeout(timeout);
-      const idx = _responseListeners.indexOf(handler);
-      if (idx !== -1) _responseListeners.splice(idx, 1);
-      resolve(line);
-    };
-    _responseListeners.push(handler);
+  // Poll for response
+  const deadline = Date.now() + RESPONSE_TIMEOUT_MS;
 
-    // Send command
-    const json = JSON.stringify(command) + NEWLINE;
-    write(json).catch((err) => {
-      clearTimeout(timeout);
-      const idx = _responseListeners.indexOf(handler);
-      if (idx !== -1) _responseListeners.splice(idx, 1);
-      reject(err);
-    });
-  });
+  while (Date.now() < deadline) {
+    // Check if we already have a complete line in our internal buffer
+    const nlIdx = _readBuffer.indexOf(NEWLINE);
+    if (nlIdx !== -1) {
+      const line = _readBuffer.slice(0, nlIdx).trim();
+      _readBuffer = _readBuffer.slice(nlIdx + 1);
+      if (line) {
+        try {
+          return JSON.parse(line);
+        } catch {
+          throw new Error(`Invalid JSON from Pi: ${line.slice(0, 80)}`);
+        }
+      }
+      // Empty line, skip and continue
+      continue;
+    }
 
-  try {
-    return JSON.parse(response);
-  } catch {
-    throw new Error(`Invalid JSON from Pi: ${response.slice(0, 80)}`);
+    // Read more data from the plugin
+    try {
+      const chunk = await readAll();
+      if (chunk) {
+        _readBuffer += chunk;
+        // Check again after adding new data
+        const nlIdx2 = _readBuffer.indexOf(NEWLINE);
+        if (nlIdx2 !== -1) {
+          const line = _readBuffer.slice(0, nlIdx2).trim();
+          _readBuffer = _readBuffer.slice(nlIdx2 + 1);
+          if (line) {
+            try {
+              return JSON.parse(line);
+            } catch {
+              throw new Error(`Invalid JSON from Pi: ${line.slice(0, 80)}`);
+            }
+          }
+        }
+      }
+    } catch {
+      // read failed silently — connection may be lost
+      throw new Error('Empty response from Pi');
+    }
+
+    // Wait before next poll
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
+
+  throw new Error('Empty response from Pi');
 }
 
-// ── Subscribe to incoming data stream (raw, for external use) ───────────
+// ── Subscribe to incoming data stream (kept for external use) ───────────
 
 function subscribe(listener: BTListener): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -209,11 +202,9 @@ export const bluetooth = {
   connect,
   disconnect,
   write,
-  readUntil: undefined as any, // removed — use sendCommand instead
   sendCommand,
   listPairedDevices,
   discoverUnpaired,
   subscribe,
   unsubscribe,
-  clearSubscribe,
 };
