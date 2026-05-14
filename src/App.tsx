@@ -11,7 +11,7 @@ function App() {
   const [page, setPage] = useState<Page>('home');
   const bt = useBluetooth();
 
-  const go = (p: Page) => setPage(p);
+  const go = (p: string) => setPage(p as Page);
 
   switch (page) {
     case 'register':
@@ -21,7 +21,7 @@ function App() {
     case 'log':
       return <ActivityLog onBack={() => go('home')} bt={bt} />;
     default:
-      return <Home onNavigate={go} bt={bt} />;
+      return <Home onNavigate={go} />;
   }
 }
 
