@@ -71,6 +71,14 @@ export function buildRegister(faceId: string, images: string[]): Record<string, 
   return { action: 'REGISTER', face_id: faceId, images };
 }
 
+export function buildRegisterImage(faceId: string, image: string): Record<string, unknown> {
+  return { action: 'REGISTER', face_id: faceId, image };
+}
+
+export function buildRegisterFinalize(faceId: string): Record<string, unknown> {
+  return { action: 'REGISTER', face_id: faceId, finalize: true };
+}
+
 export function buildDelete(faceId: string): Record<string, unknown> {
   return { action: 'DELETE', face_id: faceId };
 }

@@ -116,7 +116,8 @@ function NavButton({ title, label, onClick, disabled, proximityWarning }: NavBut
   );
 }
 
-interface HomeProps { onNavigate: (page: string) => void }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface HomeProps { onNavigate: (page: any) => void }
 
 function rssiToPercent(rssi: number): number {
   // RSSI range: -30 (excellent) to -90 (barely there)
