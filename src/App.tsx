@@ -21,7 +21,7 @@ function App() {
     case 'log':
       return <ActivityLog onBack={() => go('home')} bt={bt} />;
     default:
-      return <Home onNavigate={go} bt={bt} />;
+      return <Home onNavigate={go} />;
   }
 }
 
