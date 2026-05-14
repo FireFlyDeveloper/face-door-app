@@ -1,22 +1,12 @@
 /**
  * Bluetooth JSON protocol helpers.
- * Matches the Pi's bluetooth_server.py command format.
- *
- * Registration uses a two-phase protocol:
- *   1. REGISTER_IMAGE — send one base64 image, Pi returns OK + index
- *   2. REGISTER_FINALIZE — after all 10 images, Pi averages & saves
- * This prevents long BT timeouts (ArcFace takes ~4s per image on Pi 4B).
+ * Matches the Pi's main.py command format.
  */
 
-export interface RegisterImageCommand {
-  action: 'REGISTER_IMAGE';
+export interface RegisterCommand {
+  action: 'REGISTER';
   face_id: string;
-  image: string;  // single base64 JPEG string
-}
-
-export interface RegisterFinalizeCommand {
-  action: 'REGISTER_FINALIZE';
-  face_id: string;
+  images: string[];  // base64 JPEG strings
 }
 
 export interface DeleteCommand {
@@ -37,20 +27,27 @@ export interface GetLogCommand {
   limit: number;
 }
 
+export interface UnlockCommand {
+  action: 'UNLOCK';
+}
+
+export interface LockCommand {
+  action: 'LOCK';
+}
+
 export type BTCommand =
-  | RegisterImageCommand
-  | RegisterFinalizeCommand
+  | RegisterCommand
   | DeleteCommand
   | ListCommand
   | PingCommand
-  | GetLogCommand;
+  | GetLogCommand
+  | UnlockCommand
+  | LockCommand;
 
 export interface BTResponse {
   status: 'OK' | 'ERROR';
   message?: string;
   response?: string;
-  index?: number;          // current image index for REGISTER_IMAGE
-  total?: number;          // total expected images
   rssi?: number;           // Bluetooth RSSI in dBm
   faces?: Array<{
     face_id: string;
@@ -70,12 +67,8 @@ export function buildPing(): Record<string, unknown> {
   return { action: 'PING' };
 }
 
-export function buildRegisterImage(faceId: string, base64: string): Record<string, unknown> {
-  return { action: 'REGISTER_IMAGE', face_id: faceId, image: base64 };
-}
-
-export function buildRegisterFinalize(faceId: string): Record<string, unknown> {
-  return { action: 'REGISTER_FINALIZE', face_id: faceId };
+export function buildRegister(faceId: string, images: string[]): Record<string, unknown> {
+  return { action: 'REGISTER', face_id: faceId, images };
 }
 
 export function buildDelete(faceId: string): Record<string, unknown> {
@@ -88,4 +81,12 @@ export function buildList(): Record<string, unknown> {
 
 export function buildGetLog(limit = 50): Record<string, unknown> {
   return { action: 'GET_LOG', limit };
+}
+
+export function buildUnlock(): Record<string, unknown> {
+  return { action: 'UNLOCK' };
+}
+
+export function buildLock(): Record<string, unknown> {
+  return { action: 'LOCK' };
 }

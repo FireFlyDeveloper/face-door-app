@@ -10,7 +10,6 @@ export interface UseBluetoothReturn {
   connectedDevice: BTDevice | null;
   error: string | null;
   pairedDevices: BTDevice[];
-  lastMac: string | null;              // last attempted MAC for retry
   rssi: number | null;                // last measured RSSI
   isNearby: boolean | null;           // true if rssi >= threshold
   connect: (address: string) => Promise<void>;
@@ -19,6 +18,8 @@ export interface UseBluetoothReturn {
   ping: () => Promise<boolean>;
   pingWithRssi: () => Promise<number | null>;  // returns RSSI
   sendCommand: (cmd: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  unlockDoor: () => Promise<{ ok: boolean; error?: string }>;
+  lockDoor: () => Promise<{ ok: boolean; error?: string }>;
 }
 
 export function useBluetooth(): UseBluetoothReturn {
@@ -27,7 +28,6 @@ export function useBluetooth(): UseBluetoothReturn {
   const [error, setError] = useState<string | null>(null);
   const [pairedDevices, setPairedDevices] = useState<BTDevice[]>([]);
   const [rssi, setRssi] = useState<number | null>(null);
-  const [lastMac, setLastMac] = useState<string | null>(null);
   const deviceRef = useRef<BTDevice | null>(null);
 
   const isNearby = rssi !== null ? rssi >= RSSI_THRESHOLD : null;
@@ -40,7 +40,6 @@ export function useBluetooth(): UseBluetoothReturn {
     }
     setStatus('connecting');
     setError(null);
-    setLastMac(address);
     try {
       await bluetooth.connect(address);
       setStatus('connected');
@@ -110,12 +109,43 @@ export function useBluetooth(): UseBluetoothReturn {
     return bluetooth.sendCommand(cmd);
   }, []);
 
+  const unlockDoor = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (status !== 'connected') {
+      return { ok: false, error: 'Not connected' };
+    }
+    try {
+      const resp = await bluetooth.sendCommand({ action: 'UNLOCK' }) as unknown as BTResponse;
+      if (resp?.status === 'OK') {
+        return { ok: true };
+      }
+      return { ok: false, error: resp?.message || 'UNLOCK failed' };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'UNLOCK command failed';
+      return { ok: false, error: msg };
+    }
+  }, [status]);
+
+  const lockDoor = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (status !== 'connected') {
+      return { ok: false, error: 'Not connected' };
+    }
+    try {
+      const resp = await bluetooth.sendCommand({ action: 'LOCK' }) as unknown as BTResponse;
+      if (resp?.status === 'OK') {
+        return { ok: true };
+      }
+      return { ok: false, error: resp?.message || 'LOCK failed' };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'LOCK command failed';
+      return { ok: false, error: msg };
+    }
+  }, [status]);
+
   return {
     status,
     connectedDevice,
     error,
     pairedDevices,
-    lastMac,
     rssi,
     isNearby,
     connect,
@@ -124,5 +154,7 @@ export function useBluetooth(): UseBluetoothReturn {
     ping,
     pingWithRssi,
     sendCommand,
+    unlockDoor,
+    lockDoor,
   };
 }
